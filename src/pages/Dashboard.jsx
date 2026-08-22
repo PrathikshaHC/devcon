@@ -1,0 +1,10 @@
+import { ArrowRight, Plus, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { participatedAuctions } from '../data/auctions';
+import SectionHeading from '../components/SectionHeading';
+
+function Row({ auction, participated = false }) { return <div className="history-row"><img src={auction.image} alt="" /><div className="history-name"><strong>{auction.title}</strong><span>{participated ? `Your bid: ${auction.bid}` : auction.minimumBid}</span></div><span className={`badge ${auction.status === 'Won' ? 'won' : 'live'}`}>{auction.status}</span><Link to={`/auctions/${auction.id}`} aria-label={`View ${auction.title}`}><ArrowRight size={17} /></Link></div>; }
+
+export default function Dashboard({ createdAuctions }) {
+  return <div className="page-width page-section"><SectionHeading eyebrow="Your space" title="My Auctions" copy="Keep track of the things you have put into the world, and the ones you are watching." action={<Link className="button primary" to="/create"><Plus size={16} /> New auction</Link>} /><div className="dashboard-stats"><div><small>Created</small><strong>{createdAuctions.length}</strong><span>Auctions listed</span></div><div><small>Participated</small><strong>2</strong><span>Private bids placed</span></div><div><small>Won</small><strong>1</strong><span>Assets collected</span></div><div className="stat-accent"><TrendingUp size={20} /><span>Activity is private by default</span></div></div><div className="dashboard-columns"><section className="history-section"><div className="subheading"><h3>Created by you</h3><span>{createdAuctions.length} total</span></div>{createdAuctions.length ? createdAuctions.map((auction) => <Row key={auction.id} auction={auction} />) : <div className="small-empty"><Plus size={18} /><span>You have not created an auction yet.</span><Link to="/create">Create one</Link></div>}</section><section className="history-section"><div className="subheading"><h3>Your activity</h3><span>Recent</span></div>{participatedAuctions.map((auction) => <Row key={auction.id} auction={auction} participated />)}</section></div></div>;
+}
