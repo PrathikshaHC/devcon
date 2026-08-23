@@ -21,19 +21,87 @@ export const WalletProvider = ({ children }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
+  const [connectionIssue, setConnectionIssue] = useState(null);
   const [isMetaMaskInstalledState, setIsMetaMaskInstalledState] = useState(false);
   const lastDisconnectToastAt = useRef(0);
   const { showToast } = useToast();
 
   const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
   const DISCONNECT_MESSAGE = 'Disconnected from MetaMask for this site. To fully disconnect, open MetaMask and click Lock.';
+  const REQUEST_ALREADY_PENDING_CODE = -32002;
+  const USER_REJECTED_REQUEST_CODE = 4001;
+  const CONNECT_CANCELLED_CODE = 'METAMASK_CONNECT_CANCELLED';
+  const CONNECT_REQUEST_TIMEOUT_MS = 15000;
+
+  const isUserRejectedRequest = (err) => {
+    const message = String(err?.message || '').toLowerCase();
+    return err?.code === USER_REJECTED_REQUEST_CODE || message.includes('user rejected');
+  };
+
+  const createConnectCancelledError = () => {
+    const err = new Error('MetaMask connection was cancelled');
+    err.code = CONNECT_CANCELLED_CODE;
+    return err;
+  };
+
+  const requestAccountsWithCancelGuard = (ethereum) => {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let focusCheckId;
+
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        window.clearTimeout(focusCheckId);
+        window.removeEventListener('focus', handleFocus);
+      };
+
+      const settle = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback(value);
+      };
+
+      const cancelIfNoAccountSelected = async () => {
+        try {
+          const accounts = await ethereum.request({ method: 'eth_accounts' });
+          if (!accounts.length) {
+            settle(reject, createConnectCancelledError());
+          }
+        } catch (err) {
+          settle(reject, err);
+        }
+      };
+
+      const handleFocus = () => {
+        window.clearTimeout(focusCheckId);
+        focusCheckId = window.setTimeout(cancelIfNoAccountSelected, 700);
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        settle(reject, createConnectCancelledError());
+      }, CONNECT_REQUEST_TIMEOUT_MS);
+
+      window.addEventListener('focus', handleFocus);
+
+      ethereum.request({ method: 'eth_requestAccounts' })
+        .then((accounts) => settle(resolve, accounts))
+        .catch((err) => settle(reject, err));
+    });
+  };
 
   const clearWalletState = useCallback(() => {
     setAccount(null);
     setChainId(null);
     setIsConnected(false);
     setError(null);
+    setConnectionIssue(null);
   }, []);
+
+  const resetWalletConnection = useCallback(() => {
+    setIsConnecting(false);
+    clearWalletState();
+  }, [clearWalletState]);
 
   const showDisconnectToast = useCallback(() => {
     const now = Date.now();
@@ -123,14 +191,13 @@ export const WalletProvider = ({ children }) => {
 
     setIsConnecting(true);
     setError(null);
+    setConnectionIssue(null);
 
     try {
       const ethereum = window.ethereum;
       
       // Request accounts
-      const accounts = await ethereum.request({ 
-        method: 'eth_requestAccounts' 
-      });
+      const accounts = await requestAccountsWithCancelGuard(ethereum);
 
       if (accounts.length === 0) {
         throw new Error('No accounts found');
@@ -162,23 +229,33 @@ export const WalletProvider = ({ children }) => {
 
     } catch (err) {
       console.error('Connection error:', err);
-      if (err.code === 4001) {
-        setError('Connection rejected by user');
+      clearWalletState();
+
+      if (err.code === CONNECT_CANCELLED_CODE || isUserRejectedRequest(err)) {
+        setError('Connection cancelled. Click Connect Wallet to try again.');
+        setConnectionIssue('cancelled');
         showToast({
-          title: 'Connection rejected',
-          message: 'MetaMask did not grant this site wallet access.',
+          title: 'Connection cancelled',
+          message: 'MetaMask was closed before this site got wallet access. Try connecting again.',
+          type: 'warning'
+        });
+      } else if (err.code === REQUEST_ALREADY_PENDING_CODE) {
+        setError('MetaMask already has a pending request. Open MetaMask from the browser toolbar, then reject or approve it.');
+        setConnectionIssue('pending');
+        showToast({
+          title: 'MetaMask request already open',
+          message: 'Open MetaMask from the browser toolbar and close the pending request.',
           type: 'warning'
         });
       } else {
         setError(err.message || 'Failed to connect wallet');
+        setConnectionIssue('failed');
         showToast({
           title: 'Connection failed',
           message: err.message || 'Failed to connect wallet.',
           type: 'error'
         });
       }
-      setIsConnected(false);
-      setAccount(null);
     } finally {
       setIsConnecting(false);
     }
@@ -259,10 +336,12 @@ export const WalletProvider = ({ children }) => {
     isConnected,
     isConnecting,
     error,
+    connectionIssue,
     isMetaMaskInstalled: isMetaMaskInstalledState,
     isOnSepolia,
     connectWallet,
     disconnectWallet,
+    resetWalletConnection,
     switchToSepolia,
     shortenAddress,
     SEPOLIA_CHAIN_ID

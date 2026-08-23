@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Copy, ExternalLink, LogOut } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Copy, ExternalLink, LogOut, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../../context/walletContext';
 import './ConnetWallet.css';
@@ -15,11 +15,13 @@ const ConnectWallet = () => {
     isConnected,
     isConnecting,
     error,
+    connectionIssue,
     notice,
     isMetaMaskInstalled,
     isOnSepolia,
     connectWallet,
     disconnectWallet,
+    resetWalletConnection,
     switchToSepolia,
     shortenAddress
   } = useWallet();
@@ -139,7 +141,31 @@ const ConnectWallet = () => {
       >
         Connect Wallet
       </button>
-      {error && <div className="wallet-error">{error}</div>}
+      {error && (
+        <div className="wallet-error wallet-error-panel">
+          <div className="wallet-error-title">
+            <AlertTriangle size={14} />
+            MetaMask needs attention
+          </div>
+          <p>{error}</p>
+          {connectionIssue === 'pending' && (
+            <p>
+              Click the MetaMask fox icon in your browser toolbar and reject or approve the open request.
+              Browsers do not let this app force-close that MetaMask notification.
+            </p>
+          )}
+          <div className="wallet-error-actions">
+            <button type="button" onClick={connectWallet}>
+              <ExternalLink size={13} />
+              Prompt MetaMask
+            </button>
+            <button type="button" onClick={resetWalletConnection}>
+              <RotateCcw size={13} />
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
       {notice && <div className="wallet-notice">{notice}</div>}
     </div>
   );
